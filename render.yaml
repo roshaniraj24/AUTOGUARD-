@@ -1,0 +1,47 @@
+services:
+  # Backend API
+  - type: web
+    name: autoguard-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: autoguard-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: autoguard-redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_ENV
+        value: production
+
+  # PostgreSQL Database
+  - type: pserv
+    name: autoguard-db
+    env: docker
+    plan: free
+    ipAllowList: []
+
+  # Redis Cache
+  - type: redis
+    name: autoguard-redis
+    plan: free
+    ipAllowList: []
+
+  # Frontend (if serving separately)
+  - type: web
+    name: autoguard-frontend
+    env: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: ./frontend/build
+    envVars:
+      - key: REACT_APP_API_URL
+        fromService:
+          type: web
+          name: autoguard-backend
+          envVarKey: RENDER_EXTERNAL_URL
