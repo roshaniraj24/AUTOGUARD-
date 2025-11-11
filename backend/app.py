@@ -19,8 +19,8 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
-CORS(app, origins=["http://localhost:3000"])
-socketio = SocketIO(app, cors_allowed_origins=["http://localhost:3000"])
+CORS(app, origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://localhost:3003"])
+socketio = SocketIO(app, cors_allowed_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://localhost:3003"])
 
 # Initialize Docker client
 docker_client = docker.from_env()
