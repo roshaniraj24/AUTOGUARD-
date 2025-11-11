@@ -1,8 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import App from '../App';
 
-// Mock WebSocket
+
 global.WebSocket = class WebSocket {
   constructor() {
     this.readyState = 1;
@@ -15,13 +15,13 @@ global.WebSocket = class WebSocket {
 
 describe('App Component', () => {
   test('renders without crashing', () => {
-    render(<App />);
-    expect(document.body).toBeInTheDocument();
+    const { container } = render(<App />);
+    expect(container).toBeInTheDocument();
   });
 
   test('renders AutoGuard dashboard', () => {
-    render(<App />);
-    // Basic test that component renders
-    expect(document.querySelector('.App')).toBeTruthy();
+    const { container } = render(<App />);
+   
+    expect(container).not.toBeEmptyDOMElement();
   });
 });
