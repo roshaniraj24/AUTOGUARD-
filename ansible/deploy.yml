@@ -1,0 +1,112 @@
+---
+- name: Deploy Application
+  hosts: webservers
+  become: yes
+  vars:
+    app_name: "{{ app_name | default('devops-app') }}"
+    app_version: "{{ app_version | default('latest') }}"
+    git_repo: "{{ git_repo | default('') }}"
+    branch: "{{ branch | default('main') }}"
+    
+  tasks:
+    - name: Create deployment directory
+      file:
+        path: /opt/deployments/{{ app_name }}-{{ app_version }}
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+    
+    - name: Clone or update application code
+      git:
+        repo: "{{ git_repo }}"
+        dest: /opt/deployments/{{ app_name }}-{{ app_version }}
+        version: "{{ branch }}"
+        force: yes
+      when: git_repo != ""
+    
+    - name: Install application dependencies
+      command: npm install
+      args:
+        chdir: /opt/deployments/{{ app_name }}-{{ app_version }}
+      when: ansible_stat.stat.exists
+      vars:
+        ansible_stat:
+          stat:
+            path: /opt/deployments/{{ app_name }}-{{ app_version }}/package.json
+    
+    - name: Build application
+      command: npm run build
+      args:
+        chdir: /opt/deployments/{{ app_name }}-{{ app_version }}
+      when: ansible_stat.stat.exists
+      vars:
+        ansible_stat:
+          stat:
+            path: /opt/deployments/{{ app_name }}-{{ app_version }}/package.json
+    
+    - name: Stop application service
+      service:
+        name: "{{ app_name }}"
+        state: stopped
+      ignore_errors: yes
+    
+    - name: Create symlink to current version
+      file:
+        src: /opt/deployments/{{ app_name }}-{{ app_version }}
+        dest: /var/www/{{ app_name }}/current
+        state: link
+        force: yes
+    
+    - name: Update nginx configuration
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/sites-available/{{ app_name }}
+        backup: yes
+      notify: reload nginx
+    
+    - name: Test nginx configuration
+      command: nginx -t
+      register: nginx_test
+      failed_when: nginx_test.rc != 0
+    
+    - name: Start application service
+      service:
+        name: "{{ app_name }}"
+        state: started
+        enabled: yes
+      ignore_errors: yes
+    
+    - name: Wait for application to be ready
+      uri:
+        url: "http://localhost/health"
+        method: GET
+        status_code: 200
+      register: app_health
+      until: app_health.status == 200
+      retries: 30
+      delay: 2
+    
+    - name: Create deployment record
+      copy:
+        content: |
+          Deployment Information:
+          App Name: {{ app_name }}
+          Version: {{ app_version }}
+          Branch: {{ branch }}
+          Deployed At: {{ ansible_date_time.iso8601 }}
+          Deployed By: {{ ansible_user }}
+        dest: /opt/deployments/{{ app_name }}-{{ app_version }}/DEPLOYMENT_INFO
+    
+    - name: Clean up old deployments
+      shell: |
+        cd /opt/deployments
+        ls -1dt {{ app_name }}-* | tail -n +6 | xargs rm -rf
+      args:
+        warn: false
+
+  handlers:
+    - name: reload nginx
+      service:
+        name: nginx
+        state: reloaded

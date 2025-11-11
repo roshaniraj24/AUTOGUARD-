@@ -1,0 +1,162 @@
+---
+- name: Auto-Healing Playbook
+  hosts: all
+  become: yes
+  vars:
+    alert_type: "{{ alert_type | default('unknown') }}"
+    server: "{{ server | default('unknown') }}"
+    
+  tasks:
+    - name: Debug alert information
+      debug:
+        msg: "Processing auto-heal for alert type: {{ alert_type }} on server: {{ server }}"
+    
+    - name: Handle high CPU usage
+      block:
+        - name: Restart high CPU processes
+          shell: |
+            # Find processes using high CPU and restart them gracefully
+            ps aux --sort=-%cpu | head -10
+            # This is a placeholder - in production, you'd have specific process management
+            systemctl restart nginx || service nginx restart
+          when: alert_type == "cpu_high"
+        
+        - name: Clear system caches
+          shell: |
+            sync
+            echo 3 > /proc/sys/vm/drop_caches
+          when: alert_type == "cpu_high"
+    
+    - name: Handle high memory usage
+      block:
+        - name: Restart memory-intensive services
+          service:
+            name: "{{ item }}"
+            state: restarted
+          loop:
+            - nginx
+            - postgresql
+          ignore_errors: yes
+          when: alert_type == "memory_high"
+        
+        - name: Clear memory caches
+          shell: |
+            sync
+            echo 1 > /proc/sys/vm/drop_caches
+          when: alert_type == "memory_high"
+    
+    - name: Handle disk space issues
+      block:
+        - name: Clean temporary files
+          shell: |
+            find /tmp -type f -atime +7 -delete
+            find /var/tmp -type f -atime +7 -delete
+            find /var/log -name "*.log" -type f -size +100M -exec truncate -s 10M {} \;
+          when: alert_type == "disk_high"
+        
+        - name: Clean package caches
+          shell: |
+            apt-get clean
+            apt-get autoremove -y
+          when: alert_type == "disk_high" and ansible_os_family == "Debian"
+    
+    - name: Handle service down
+      block:
+        - name: Restart failed service
+          service:
+            name: nginx
+            state: restarted
+          when: alert_type == "service_down"
+        
+        - name: Check service status
+          service:
+            name: nginx
+            state: started
+          register: service_status
+          when: alert_type == "service_down"
+    
+    - name: Handle network connectivity issues
+      block:
+        - name: Restart network service
+          service:
+            name: networking
+            state: restarted
+          when: alert_type == "network_issue"
+        
+        - name: Flush DNS cache
+          shell: |
+            systemctl restart systemd-resolved || service dns-clean start
+          when: alert_type == "network_issue"
+    
+    - name: Handle database connection issues
+      block:
+        - name: Restart PostgreSQL
+          service:
+            name: postgresql
+            state: restarted
+          when: alert_type == "db_connection" and inventory_hostname in groups['databases']
+        
+        - name: Check database connectivity
+          postgresql_ping:
+            db: postgres
+          when: alert_type == "db_connection" and inventory_hostname in groups['databases']
+          ignore_errors: yes
+    
+    - name: Verify system health after remediation
+      block:
+        - name: Check CPU usage
+          shell: |
+            top -bn1 | grep "Cpu(s)" | awk '{print $2}' | awk -F'%' '{print $1}'
+          register: cpu_usage
+        
+        - name: Check memory usage
+          shell: |
+            free | grep Mem | awk '{printf("%.1f", $3/$2 * 100.0)}'
+          register: memory_usage
+        
+        - name: Check disk usage
+          shell: |
+            df / | tail -1 | awk '{print $5}' | sed 's/%//'
+          register: disk_usage
+        
+        - name: Report remediation results
+          debug:
+            msg: |
+              Auto-healing completed for {{ alert_type }} on {{ server }}
+              Current system status:
+              CPU Usage: {{ cpu_usage.stdout }}%
+              Memory Usage: {{ memory_usage.stdout }}%
+              Disk Usage: {{ disk_usage.stdout }}%
+    
+    - name: Create remediation log
+      copy:
+        content: |
+          Auto-Healing Report
+          ===================
+          Alert Type: {{ alert_type }}
+          Server: {{ server }}
+          Timestamp: {{ ansible_date_time.iso8601 }}
+          Actions Performed:
+          {% if alert_type == "cpu_high" %}
+          - Restarted nginx service
+          - Cleared system caches
+          {% elif alert_type == "memory_high" %}
+          - Restarted memory-intensive services
+          - Cleared memory caches
+          {% elif alert_type == "disk_high" %}
+          - Cleaned temporary files
+          - Cleaned package caches
+          {% elif alert_type == "service_down" %}
+          - Restarted failed service
+          {% elif alert_type == "network_issue" %}
+          - Restarted network service
+          - Flushed DNS cache
+          {% elif alert_type == "db_connection" %}
+          - Restarted PostgreSQL service
+          {% endif %}
+          
+          Post-Remediation Status:
+          CPU Usage: {{ cpu_usage.stdout | default('N/A') }}%
+          Memory Usage: {{ memory_usage.stdout | default('N/A') }}%
+          Disk Usage: {{ disk_usage.stdout | default('N/A') }}%
+        dest: /var/log/auto-heal-{{ ansible_date_time.epoch }}.log

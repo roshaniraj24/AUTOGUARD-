@@ -1,0 +1,81 @@
+name: Manual Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: 'Version to deploy (commit SHA or tag)'
+        required: true
+        type: string
+      force_deploy:
+        description: 'Force deployment even if health checks fail'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  manual-deploy:
+    name: Manual Deployment
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - name: Checkout specific version
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version }}
+
+      - name: Validate deployment target
+        run: |
+          echo "Deploying version ${{ github.event.inputs.version }} to ${{ github.event.inputs.environment }}"
+          
+      - name: Deploy to ${{ github.event.inputs.environment }}
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ github.event.inputs.environment == 'production' && secrets.PRODUCTION_HOST || secrets.STAGING_HOST }}
+          username: ${{ github.event.inputs.environment == 'production' && secrets.PRODUCTION_USER || secrets.STAGING_USER }}
+          key: ${{ github.event.inputs.environment == 'production' && secrets.PRODUCTION_SSH_KEY || secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /opt/devops-monitoring-platform
+            
+            # Backup current state if production
+            if [ "${{ github.event.inputs.environment }}" = "production" ]; then
+              docker-compose exec postgres pg_dump -U devops_user monitoring_db > manual_backup_$(date +%Y%m%d_%H%M%S).sql
+            fi
+            
+            # Checkout specific version
+            git fetch origin
+            git checkout ${{ github.event.inputs.version }}
+            
+            # Deploy
+            docker-compose pull
+            docker-compose up -d
+            sleep 60
+
+      - name: Run health checks
+        if: ${{ !github.event.inputs.force_deploy }}
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ github.event.inputs.environment == 'production' && secrets.PRODUCTION_HOST || secrets.STAGING_HOST }}
+          username: ${{ github.event.inputs.environment == 'production' && secrets.PRODUCTION_USER || secrets.STAGING_USER }}
+          key: ${{ github.event.inputs.environment == 'production' && secrets.PRODUCTION_SSH_KEY || secrets.STAGING_SSH_KEY }}
+          script: |
+            # Health checks
+            curl -f http://localhost:3000 || exit 1
+            curl -f http://localhost:5000/health || exit 1
+            curl -f http://localhost:5000/api/servers || exit 1
+            echo "Health checks passed!"
+
+      - name: Notify deployment
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          text: "🎯 Manual deployment of ${{ github.event.inputs.version }} to ${{ github.event.inputs.environment }} completed successfully!"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

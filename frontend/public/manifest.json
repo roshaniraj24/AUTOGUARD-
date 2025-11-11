@@ -1,0 +1,29 @@
+{
+  "short_name": "AutoGuard",
+  "name": "AutoGuard - Your Automated Infrastructure Guardian",
+  "description": "Real-time infrastructure monitoring with intelligent auto-healing capabilities",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "logo192.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192"
+    },
+    {
+      "src": "logo512.svg",
+      "type": "image/svg+xml",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#3B82F6",
+  "background_color": "#0F172A",
+  "categories": ["productivity", "utilities", "developer tools"],
+  "orientation": "any"
+}

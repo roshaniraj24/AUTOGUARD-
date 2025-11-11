@@ -1,0 +1,422 @@
+name: DevOps Monitoring Platform CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  DOCKER_COMPOSE_VERSION: v2.23.0
+  NODE_VERSION: 18
+  PYTHON_VERSION: 3.11
+
+jobs:
+  test-frontend:
+    name: Test Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run frontend linting
+        run: |
+          cd frontend
+          npm run lint --if-present
+
+      - name: Run frontend tests
+        run: |
+          cd frontend
+          npm test -- --coverage --watchAll=false
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Upload frontend build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: frontend-build
+          path: frontend/build/
+
+  test-backend:
+    name: Test Backend
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: test_user
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov flake8
+
+      - name: Run backend linting
+        run: |
+          cd backend
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Run backend tests
+        env:
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379/0
+          FLASK_ENV: testing
+        run: |
+          cd backend
+          python -m pytest tests/ --cov=app --cov-report=xml --cov-report=html
+
+      - name: Upload backend coverage reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: backend-coverage
+          path: backend/htmlcov/
+
+  test-ansible:
+    name: Test Ansible Playbooks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Ansible and dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible ansible-lint yamllint
+
+      - name: Lint YAML files
+        run: |
+          yamllint ansible/
+
+      - name: Lint Ansible playbooks
+        run: |
+          cd ansible
+          ansible-lint *.yml
+
+      - name: Syntax check playbooks
+        run: |
+          cd ansible
+          ansible-playbook --syntax-check *.yml
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Scan Docker images
+        run: |
+          docker build -t devops-frontend:test frontend/
+          docker build -t devops-backend:test backend/
+          docker build -t devops-ansible:test ansible/
+          trivy image devops-frontend:test
+          trivy image devops-backend:test
+          trivy image devops-ansible:test
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [test-frontend, test-backend, test-ansible]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Compose
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/${{ env.DOCKER_COMPOSE_VERSION }}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+
+      - name: Build services
+        run: |
+          docker-compose build
+
+      - name: Start services
+        run: |
+          docker-compose up -d
+          sleep 60  # Wait for services to be ready
+
+      - name: Run health checks
+        run: |
+          # Check if services are responding
+          curl -f http://localhost:3000 || exit 1
+          curl -f http://localhost:5000/health || exit 1
+          curl -f http://localhost:8080 || exit 1
+          curl -f http://localhost:9090 || exit 1
+          curl -f http://localhost:3001 || exit 1
+
+      - name: Run integration tests
+        run: |
+          # Test API endpoints
+          curl -f http://localhost:5000/api/servers || exit 1
+          curl -f http://localhost:5000/api/metrics || exit 1
+          curl -f http://localhost:5000/api/alerts || exit 1
+
+      - name: Check logs for errors
+        if: failure()
+        run: |
+          docker-compose logs
+
+      - name: Stop services
+        if: always()
+        run: |
+          docker-compose down -v
+
+  build-and-push:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    needs: [integration-test, security-scan]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Generate tags
+        id: tags
+        run: |
+          echo "FRONTEND_TAG=devops-frontend:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "BACKEND_TAG=devops-backend:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "ANSIBLE_TAG=devops-ansible:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ steps.tags.outputs.FRONTEND_TAG }}
+            devops-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ steps.tags.outputs.BACKEND_TAG }}
+            devops-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push ansible
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ansible
+          push: true
+          tags: |
+            ${{ steps.tags.outputs.ANSIBLE_TAG }}
+            devops-ansible:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /opt/devops-monitoring-platform
+            git pull origin main
+            docker-compose pull
+            docker-compose up -d
+            sleep 30
+            # Run health checks
+            curl -f http://localhost:3000 || exit 1
+            curl -f http://localhost:5000/health || exit 1
+
+      - name: Run smoke tests
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            # Test critical functionality
+            curl -f http://localhost:5000/api/servers
+            curl -f http://localhost:5000/api/metrics
+            echo "Staging deployment successful!"
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create deployment record
+        run: |
+          echo "Deploying commit ${{ github.sha }} to production at $(date)"
+
+      - name: Deploy to production server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /opt/devops-monitoring-platform
+            
+            # Create backup
+            docker-compose exec postgres pg_dump -U devops_user monitoring_db > backup_$(date +%Y%m%d_%H%M%S).sql
+            
+            # Deploy new version
+            git pull origin main
+            docker-compose pull
+            docker-compose up -d
+            
+            # Wait for services to be ready
+            sleep 60
+            
+            # Run health checks
+            curl -f http://localhost:3000 || exit 1
+            curl -f http://localhost:5000/health || exit 1
+
+      - name: Run post-deployment tests
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            # Comprehensive health checks
+            curl -f http://localhost:5000/api/servers
+            curl -f http://localhost:5000/api/metrics
+            curl -f http://localhost:5000/api/alerts
+            
+            # Check database connectivity
+            docker-compose exec postgres pg_isready -U devops_user
+            
+            # Check monitoring services
+            curl -f http://localhost:8080/nagios/
+            curl -f http://localhost:9090/-/healthy
+            curl -f http://localhost:3001/api/health
+
+      - name: Notify deployment success
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          text: "🚀 Production deployment successful! Commit: ${{ github.sha }}"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  rollback-production:
+    name: Rollback Production
+    runs-on: ubuntu-latest
+    if: failure() && github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - name: Rollback production deployment
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /opt/devops-monitoring-platform
+            git reset --hard HEAD~1
+            docker-compose up -d
+            echo "Production rollback completed"
+
+      - name: Notify rollback
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          text: "⚠️ Production deployment failed and was rolled back. Commit: ${{ github.sha }}"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

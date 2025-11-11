@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevOps Monitoring Dashboard - Enhanced</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/framer-motion@6/dist/framer-motion.js"></script>
+    <script src="https://unpkg.com/recharts@2.5.0/esm/index.js" type="module"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Glass morphism effect */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .metric-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1e3c72, #2a5298, #1e3c72);
+            min-height: 100vh;
+            color: white;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        
+        .animate-pulse-slow {
+            animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        .gradient-text {
+            background: linear-gradient(45deg, #3b82f6, #8b5cf6, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .status-online { color: #10b981; }
+        .status-warning { color: #f59e0b; }
+        .status-error { color: #ef4444; }
+        
+        .auto-refresh-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body class="bg-gray-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { createRoot } = ReactDOM;
+
+        // Enhanced Dashboard Component
+        function Dashboard() {
+            const [metrics, setMetrics] = useState({
+                totalServers: 12,
+                onlineServers: 11,
+                cpuUsage: 67,
+                memoryUsage: 82,
+                diskUsage: 45,
+                networkTraffic: 1.2,
+                uptime: 99.8,
+                responseTime: 145,
+                throughput: 2340,
+                activeConnections: 1247,
+                securityThreats: 3,
+                lastBackup: '2h ago',
+                apiCalls: 15420,
+                errors: 12,
+                warnings: 7
+            });
+
+            const [autoRefresh, setAutoRefresh] = useState(true);
+            const [refreshInterval, setRefreshInterval] = useState(5);
+            const [lastUpdate, setLastUpdate] = useState(new Date());
+            const [isRefreshing, setIsRefreshing] = useState(false);
+
+            // Auto-refresh functionality
+            useEffect(() => {
+                let interval;
+                if (autoRefresh) {
+                    interval = setInterval(() => {
+                        setIsRefreshing(true);
+                        // Simulate real-time data updates
+                        setMetrics(prev => ({
+                            ...prev,
+                            cpuUsage: Math.max(0, Math.min(100, prev.cpuUsage + (Math.random() - 0.5) * 10)),
+                            memoryUsage: Math.max(0, Math.min(100, prev.memoryUsage + (Math.random() - 0.5) * 8)),
+                            networkTraffic: Math.max(0, prev.networkTraffic + (Math.random() - 0.5) * 0.5),
+                            responseTime: Math.max(50, prev.responseTime + (Math.random() - 0.5) * 30),
+                            throughput: Math.max(0, prev.throughput + (Math.random() - 0.5) * 200),
+                            activeConnections: Math.max(0, prev.activeConnections + Math.floor((Math.random() - 0.5) * 100)),
+                            errors: Math.max(0, prev.errors + Math.floor((Math.random() - 0.5) * 3)),
+                            apiCalls: prev.apiCalls + Math.floor(Math.random() * 50)
+                        }));
+                        setLastUpdate(new Date());
+                        setTimeout(() => setIsRefreshing(false), 500);
+                    }, refreshInterval * 1000);
+                }
+                return () => {
+                    if (interval) clearInterval(interval);
+                };
+            }, [autoRefresh, refreshInterval]);
+
+            const MetricCard = ({ title, value, icon, color, trend, subtitle }) => {
+                const getColorClass = (color) => {
+                    const colors = {
+                        blue: 'border-blue-500/50 bg-blue-500/10 text-blue-400',
+                        green: 'border-green-500/50 bg-green-500/10 text-green-400',
+                        red: 'border-red-500/50 bg-red-500/10 text-red-400',
+                        yellow: 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400',
+                        purple: 'border-purple-500/50 bg-purple-500/10 text-purple-400',
+                        cyan: 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400',
+                        orange: 'border-orange-500/50 bg-orange-500/10 text-orange-400'
+                    };
+                    return colors[color] || colors.blue;
+                };
+
+                return (
+                    <div className={`metric-card border-l-4 ${getColorClass(color)} hover:scale-105 transition-all duration-300`}>
+                        <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className={`text-2xl ${getColorClass(color).split(' ')[2]}`}>{icon}</span>
+                                    {trend !== undefined && (
+                                        <div className={`flex items-center space-x-1 text-sm ${
+                                            trend > 0 ? 'text-green-400' : trend < 0 ? 'text-red-400' : 'text-gray-400'
+                                        }`}>
+                                            <span>{trend > 0 ? '↗' : trend < 0 ? '↘' : '→'}</span>
+                                            <span>{Math.abs(trend)}%</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <h3 className="text-sm font-medium text-gray-300 mb-1">{title}</h3>
+                                <p className="text-2xl font-bold text-white mb-1">{value}</p>
+                                {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const ServerCard = ({ name, status, cpu, memory, uptime, connections }) => {
+                const getStatusClass = (status) => {
+                    return status === 'online' ? 'status-online' : 
+                           status === 'warning' ? 'status-warning' : 'status-error';
+                };
+
+                return (
+                    <div className={`glass-card p-4 border-l-4 ${
+                        status === 'online' ? 'border-green-500/50' :
+                        status === 'warning' ? 'border-yellow-500/50' : 'border-red-500/50'
+                    }`}>
+                        <div className="flex items-center justify-between mb-3">
+                            <div>
+                                <div className="flex items-center space-x-2">
+                                    <span className="text-blue-400">🖥️</span>
+                                    <span className="font-medium text-sm text-white">{name}</span>
+                                </div>
+                                {connections && <p className="text-xs text-gray-400">{connections} connections</p>}
+                            </div>
+                            <div className={`flex items-center space-x-1 ${getStatusClass(status)}`}>
+                                <div className="w-2 h-2 rounded-full bg-current animate-pulse"></div>
+                                <span className="text-xs font-medium">{status}</span>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="text-gray-400">CPU Usage</span>
+                                <div className="flex items-center space-x-2">
+                                    <span className={cpu > 80 ? 'text-red-400' : cpu > 60 ? 'text-yellow-400' : 'text-green-400'}>
+                                        {cpu}%
+                                    </span>
+                                    <div className="w-12 h-1 bg-gray-700 rounded-full overflow-hidden">
+                                        <div 
+                                            className={`h-full transition-all duration-1000 ${
+                                                cpu > 80 ? 'bg-red-400' : cpu > 60 ? 'bg-yellow-400' : 'bg-green-400'
+                                            }`}
+                                            style={{ width: `${cpu}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="text-gray-400">Memory</span>
+                                <div className="flex items-center space-x-2">
+                                    <span className={memory > 85 ? 'text-red-400' : memory > 70 ? 'text-yellow-400' : 'text-green-400'}>
+                                        {memory}%
+                                    </span>
+                                    <div className="w-12 h-1 bg-gray-700 rounded-full overflow-hidden">
+                                        <div 
+                                            className={`h-full transition-all duration-1000 ${
+                                                memory > 85 ? 'bg-red-400' : memory > 70 ? 'bg-yellow-400' : 'bg-green-400'
+                                            }`}
+                                            style={{ width: `${memory}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="text-gray-400">Uptime</span>
+                                <span className="text-blue-400 font-medium">{uptime}</span>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const AlertCard = ({ alert }) => {
+                const getAlertClass = (type) => {
+                    return type === 'error' ? 'border-red-500/50 bg-red-500/10 text-red-400' :
+                           type === 'warning' ? 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400' :
+                           'border-blue-500/50 bg-blue-500/10 text-blue-400';
+                };
+
+                const getAlertIcon = (type) => {
+                    return type === 'error' ? '🚨' : type === 'warning' ? '⚠️' : 'ℹ️';
+                };
+
+                return (
+                    <div className={`glass-card p-4 border-l-4 ${getAlertClass(alert.type)}`}>
+                        <div className="flex items-start space-x-3">
+                            <span className="text-lg">{getAlertIcon(alert.type)}</span>
+                            <div className="flex-1">
+                                <p className="text-sm font-medium text-white">{alert.message}</p>
+                                <div className="flex items-center space-x-2 mt-2 text-xs text-gray-400">
+                                    <span>🕒</span>
+                                    <span>{alert.time}</span>
+                                    {alert.source && <span>• {alert.source}</span>}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen p-6 space-y-6">
+                    {/* Auto-refresh indicator */}
+                    <div className="auto-refresh-indicator">
+                        <div className="glass-card px-4 py-2 flex items-center space-x-2">
+                            <div className={`w-2 h-2 rounded-full ${autoRefresh ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`}></div>
+                            <span className="text-sm text-white">
+                                {autoRefresh ? `Auto-refresh: ${refreshInterval}s` : 'Manual refresh'}
+                            </span>
+                            {isRefreshing && <span className="text-xs text-blue-400 animate-pulse">Updating...</span>}
+                        </div>
+                    </div>
+
+                    {/* Header */}
+                    <div className="glass-card p-6">
+                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                            <div>
+                                <h1 className="text-3xl font-bold gradient-text mb-2">
+                                    🚀 DevOps Monitoring Dashboard
+                                </h1>
+                                <p className="text-gray-400">
+                                    Last updated: {lastUpdate.toLocaleTimeString()} 
+                                    <span className="ml-2 inline-flex items-center text-green-400">
+                                        <div className="w-2 h-2 rounded-full bg-green-400 mr-1 animate-pulse"></div>
+                                        Live Data
+                                    </span>
+                                </p>
+                            </div>
+                            
+                            <div className="flex flex-wrap items-center gap-3">
+                                <button
+                                    onClick={() => setAutoRefresh(!autoRefresh)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
+                                        autoRefresh 
+                                            ? 'bg-green-500/20 border-green-500/50 text-green-400' 
+                                            : 'bg-gray-500/20 border-gray-500/50 text-gray-400'
+                                    }`}
+                                >
+                                    {autoRefresh ? '⏸️' : '▶️'} Auto-refresh
+                                </button>
+                                
+                                <select
+                                    value={refreshInterval}
+                                    onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                                    className="bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white"
+                                    disabled={!autoRefresh}
+                                >
+                                    <option value={1}>1s</option>
+                                    <option value={5}>5s</option>
+                                    <option value={10}>10s</option>
+                                    <option value={30}>30s</option>
+                                    <option value={60}>1m</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Main Metrics */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        <MetricCard
+                            title="Total Servers"
+                            value={metrics.totalServers}
+                            icon="🖥️"
+                            color="blue"
+                            trend={2}
+                            subtitle={`${metrics.onlineServers} online`}
+                        />
+                        <MetricCard
+                            title="CPU Usage"
+                            value={`${Math.round(metrics.cpuUsage)}%`}
+                            icon="⚡"
+                            color={metrics.cpuUsage > 80 ? "red" : metrics.cpuUsage > 60 ? "yellow" : "green"}
+                            trend={-5}
+                            subtitle="Average across all servers"
+                        />
+                        <MetricCard
+                            title="Memory Usage"
+                            value={`${Math.round(metrics.memoryUsage)}%`}
+                            icon="🧠"
+                            color={metrics.memoryUsage > 85 ? "red" : metrics.memoryUsage > 70 ? "yellow" : "green"}
+                            trend={8}
+                            subtitle="System memory utilization"
+                        />
+                        <MetricCard
+                            title="Active Users"
+                            value={metrics.activeConnections.toLocaleString()}
+                            icon="👥"
+                            color="purple"
+                            trend={15}
+                            subtitle="Current sessions"
+                        />
+                        <MetricCard
+                            title="System Uptime"
+                            value={`${metrics.uptime}%`}
+                            icon="✅"
+                            color="green"
+                            trend={0.2}
+                            subtitle="Last 30 days"
+                        />
+                    </div>
+
+                    {/* Network & Performance Metrics */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <MetricCard
+                            title="Network Traffic"
+                            value={`${metrics.networkTraffic.toFixed(1)} GB/s`}
+                            icon="🌐"
+                            color="cyan"
+                            trend={12}
+                            subtitle="Total throughput"
+                        />
+                        <MetricCard
+                            title="API Calls"
+                            value={metrics.apiCalls.toLocaleString()}
+                            icon="🔗"
+                            color="orange"
+                            trend={25}
+                            subtitle="Last 24 hours"
+                        />
+                        <MetricCard
+                            title="Response Time"
+                            value={`${Math.round(metrics.responseTime)}ms`}
+                            icon="⏱️"
+                            color={metrics.responseTime > 200 ? "red" : metrics.responseTime > 150 ? "yellow" : "green"}
+                            trend={-12}
+                            subtitle="Average response"
+                        />
+                        <MetricCard
+                            title="Error Rate"
+                            value={`${metrics.errors}/hr`}
+                            icon="⚠️"
+                            color={metrics.errors > 10 ? "red" : "yellow"}
+                            trend={-15}
+                            subtitle="Last hour errors"
+                        />
+                    </div>
+
+                    {/* Server Status & Alerts */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Server Status */}
+                        <div className="lg:col-span-2">
+                            <div className="glass-card p-6">
+                                <h3 className="text-lg font-semibold mb-4 flex items-center">
+                                    <span className="mr-2">🖥️</span>
+                                    Server Infrastructure Status
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <ServerCard 
+                                        name="Web Server 1"
+                                        status="online"
+                                        cpu={Math.round(metrics.cpuUsage * 0.7)}
+                                        memory={Math.round(metrics.memoryUsage * 0.6)}
+                                        uptime="15d 8h"
+                                        connections={342}
+                                    />
+                                    <ServerCard 
+                                        name="Web Server 2"
+                                        status="online"
+                                        cpu={Math.round(metrics.cpuUsage * 0.5)}
+                                        memory={Math.round(metrics.memoryUsage * 0.8)}
+                                        uptime="12d 14h"
+                                        connections={289}
+                                    />
+                                    <ServerCard 
+                                        name="Database Server"
+                                        status={metrics.memoryUsage > 85 ? "warning" : "online"}
+                                        cpu={Math.round(metrics.cpuUsage * 1.1)}
+                                        memory={Math.round(metrics.memoryUsage)}
+                                        uptime="22d 3h"
+                                        connections={156}
+                                    />
+                                    <ServerCard 
+                                        name="Load Balancer"
+                                        status="online"
+                                        cpu={Math.round(metrics.cpuUsage * 0.3)}
+                                        memory={Math.round(metrics.memoryUsage * 0.4)}
+                                        uptime="30d 12h"
+                                        connections={metrics.activeConnections}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Alerts */}
+                        <div className="glass-card p-6">
+                            <h3 className="text-lg font-semibold mb-4 flex items-center">
+                                <span className="mr-2">🔔</span>
+                                System Alerts
+                            </h3>
+                            <div className="space-y-3 max-h-96 overflow-y-auto">
+                                <AlertCard alert={{
+                                    id: 1,
+                                    type: 'warning',
+                                    message: 'High CPU usage detected on web-server-01',
+                                    time: 'just now',
+                                    source: 'web-server-01'
+                                }} />
+                                <AlertCard alert={{
+                                    id: 2,
+                                    type: 'error',
+                                    message: 'Database connection timeout exceeded',
+                                    time: '5 min ago',
+                                    source: 'db-server'
+                                }} />
+                                <AlertCard alert={{
+                                    id: 3,
+                                    type: 'info',
+                                    message: 'System backup completed successfully',
+                                    time: '10 min ago',
+                                    source: 'backup-service'
+                                }} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="text-center text-gray-400 text-sm">
+                        <p>🚀 DevOps Monitoring Platform - Enhanced Dashboard with Auto-Upgradation</p>
+                        <p>Real-time monitoring • Auto-refresh every {refreshInterval}s • Live data updates</p>
+                    </div>
+                </div>
+            );
+        }
+
+        // Render the application
+        const root = createRoot(document.getElementById('root'));
+        root.render(<Dashboard />);
+    </script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900;
+    @apply min-h-screen text-white;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20 rounded-xl shadow-2xl;
+  }
+  
+  .glass-button {
+    @apply bg-white/20 hover:bg-white/30 backdrop-blur-lg border border-white/30 rounded-lg transition-all duration-300;
+  }
+  
+  .status-online {
+    @apply bg-green-500 shadow-green-500/50;
+  }
+  
+  .status-offline {
+    @apply bg-red-500 shadow-red-500/50;
+  }
+  
+  .status-warning {
+    @apply bg-yellow-500 shadow-yellow-500/50;
+  }
+  
+  .metric-card {
+    @apply glass-card p-6 transform hover:scale-105 transition-all duration-300;
+  }
+  
+  .alert-critical {
+    @apply border-red-500/50 bg-red-500/10;
+  }
+  
+  .alert-warning {
+    @apply border-yellow-500/50 bg-yellow-500/10;
+  }
+  
+  .alert-info {
+    @apply border-blue-500/50 bg-blue-500/10;
+  }
+  
+  .profile-dropdown {
+    position: fixed !important;
+    z-index: 99999 !important;
+    transform: translateZ(0);
+  }
+  
+  .profile-backdrop {
+    position: fixed !important;
+    z-index: 99998 !important;
+    inset: 0;
+  }
+}

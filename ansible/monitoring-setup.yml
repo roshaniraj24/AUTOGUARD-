@@ -1,0 +1,155 @@
+---
+- name: Setup Monitoring Infrastructure
+  hosts: monitoring
+  become: yes
+  
+  tasks:
+    - name: Install monitoring dependencies
+      package:
+        name:
+          - curl
+          - wget
+          - unzip
+        state: present
+    
+    - name: Configure Nagios
+      block:
+        - name: Create Nagios configuration directory
+          file:
+            path: /etc/nagios
+            state: directory
+            mode: '0755'
+        
+        - name: Create Nagios hosts configuration
+          template:
+            src: nagios-hosts.cfg.j2
+            dest: /etc/nagios/hosts.cfg
+          notify: restart nagios
+        
+        - name: Create Nagios services configuration
+          template:
+            src: nagios-services.cfg.j2
+            dest: /etc/nagios/services.cfg
+          notify: restart nagios
+      when: inventory_hostname == "nagios"
+    
+    - name: Configure Prometheus
+      block:
+        - name: Create Prometheus configuration
+          template:
+            src: prometheus.yml.j2
+            dest: /etc/prometheus/prometheus.yml
+          notify: restart prometheus
+        
+        - name: Create Prometheus rules
+          copy:
+            content: |
+              groups:
+                - name: DevOps Alerts
+                  rules:
+                    - alert: HighCPUUsage
+                      expr: cpu_usage_percent > 80
+                      for: 5m
+                      labels:
+                        severity: warning
+                      annotations:
+                        summary: High CPU usage detected
+                        description: "CPU usage is above 80% for more than 5 minutes"
+                    
+                    - alert: HighMemoryUsage
+                      expr: memory_usage_percent > 85
+                      for: 5m
+                      labels:
+                        severity: warning
+                      annotations:
+                        summary: High memory usage detected
+                        description: "Memory usage is above 85% for more than 5 minutes"
+                    
+                    - alert: ServiceDown
+                      expr: up == 0
+                      for: 1m
+                      labels:
+                        severity: critical
+                      annotations:
+                        summary: Service is down
+                        description: "Service {{ $labels.instance }} is down"
+            dest: /etc/prometheus/alert.rules.yml
+          notify: restart prometheus
+      when: inventory_hostname == "prometheus"
+    
+    - name: Configure Grafana
+      block:
+        - name: Create Grafana provisioning directories
+          file:
+            path: "{{ item }}"
+            state: directory
+            mode: '0755'
+          loop:
+            - /etc/grafana/provisioning/datasources
+            - /etc/grafana/provisioning/dashboards
+        
+        - name: Configure Prometheus datasource
+          copy:
+            content: |
+              apiVersion: 1
+              datasources:
+                - name: Prometheus
+                  type: prometheus
+                  access: proxy
+                  url: http://prometheus:9090
+                  isDefault: true
+            dest: /etc/grafana/provisioning/datasources/prometheus.yml
+          notify: restart grafana
+        
+        - name: Create infrastructure dashboard
+          copy:
+            content: |
+              {
+                "dashboard": {
+                  "title": "Infrastructure Monitoring",
+                  "panels": [
+                    {
+                      "title": "CPU Usage",
+                      "type": "graph",
+                      "targets": [
+                        {
+                          "expr": "cpu_usage_percent",
+                          "legendFormat": "{{instance}}"
+                        }
+                      ]
+                    },
+                    {
+                      "title": "Memory Usage",
+                      "type": "graph",
+                      "targets": [
+                        {
+                          "expr": "memory_usage_percent",
+                          "legendFormat": "{{instance}}"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            dest: /etc/grafana/provisioning/dashboards/infrastructure.json
+          notify: restart grafana
+      when: inventory_hostname == "grafana"
+
+  handlers:
+    - name: restart nagios
+      service:
+        name: nagios
+        state: restarted
+      when: inventory_hostname == "nagios"
+    
+    - name: restart prometheus
+      service:
+        name: prometheus
+        state: restarted
+      when: inventory_hostname == "prometheus"
+    
+    - name: restart grafana
+      service:
+        name: grafana-server
+        state: restarted
+      when: inventory_hostname == "grafana"

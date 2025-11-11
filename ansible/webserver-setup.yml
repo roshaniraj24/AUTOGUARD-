@@ -1,0 +1,129 @@
+---
+- name: Configure Web Servers
+  hosts: webservers
+  become: yes
+  vars:
+    nginx_port: 80
+    app_name: "{{ app_name | default('devops-app') }}"
+    app_version: "{{ app_version | default('latest') }}"
+    
+  tasks:
+    - name: Update package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+    
+    - name: Install required packages
+      package:
+        name:
+          - nginx
+          - curl
+          - htop
+          - vim
+        state: present
+    
+    - name: Create application directory
+      file:
+        path: /var/www/{{ app_name }}
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+    
+    - name: Create nginx configuration
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/sites-available/{{ app_name }}
+        backup: yes
+      notify: restart nginx
+    
+    - name: Enable nginx site
+      file:
+        src: /etc/nginx/sites-available/{{ app_name }}
+        dest: /etc/nginx/sites-enabled/{{ app_name }}
+        state: link
+      notify: restart nginx
+    
+    - name: Remove default nginx site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: restart nginx
+    
+    - name: Create sample index.html
+      template:
+        src: index.html.j2
+        dest: /var/www/{{ app_name }}/index.html
+        owner: www-data
+        group: www-data
+        mode: '0644'
+    
+    - name: Start and enable nginx
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+    
+    - name: Install NRPE for Nagios monitoring
+      package:
+        name: nagios-nrpe-server
+        state: present
+    
+    - name: Configure NRPE
+      template:
+        src: nrpe.cfg.j2
+        dest: /etc/nagios/nrpe.cfg
+        backup: yes
+      notify: restart nrpe
+    
+    - name: Start and enable NRPE
+      service:
+        name: nagios-nrpe-server
+        state: started
+        enabled: yes
+    
+    - name: Create health check script
+      copy:
+        content: |
+          #!/bin/bash
+          if curl -f -s http://localhost:{{ nginx_port }}/health >/dev/null; then
+            echo "OK - Web server is healthy"
+            exit 0
+          else
+            echo "CRITICAL - Web server is not responding"
+            exit 2
+          fi
+        dest: /usr/local/bin/check_web_health
+        mode: '0755'
+    
+    - name: Create health endpoint
+      copy:
+        content: |
+          server {
+              listen 80;
+              location /health {
+                  access_log off;
+                  return 200 "healthy\n";
+                  add_header Content-Type text/plain;
+              }
+          }
+        dest: /etc/nginx/sites-available/health
+    
+    - name: Enable health endpoint
+      file:
+        src: /etc/nginx/sites-available/health
+        dest: /etc/nginx/sites-enabled/health
+        state: link
+      notify: restart nginx
+
+  handlers:
+    - name: restart nginx
+      service:
+        name: nginx
+        state: restarted
+    
+    - name: restart nrpe
+      service:
+        name: nagios-nrpe-server
+        state: restarted

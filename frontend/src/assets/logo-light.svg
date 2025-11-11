@@ -1,0 +1,62 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Light version for dark backgrounds -->
+  <defs>
+    <linearGradient id="badgeGradientLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F1F5F9;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E2E8F0;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="textGradientLight" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8B5CF6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Hexagonal Badge -->
+  <polygon points="100,15 165,52.5 165,127.5 100,165 35,127.5 35,52.5" 
+           fill="url(#badgeGradientLight)" 
+           stroke="#3B82F6" 
+           stroke-width="3"/>
+  
+  <!-- Shield Icon (Left) -->
+  <g transform="translate(55, 50)">
+    <path d="M 10,0 L 0,0 L 0,20 Q 0,30 10,35 Q 20,30 20,20 L 20,0 Z" 
+          fill="#10B981" 
+          opacity="0.9"/>
+    <path d="M 10,5 L 5,5 L 5,20 Q 5,25 10,28 Q 15,25 15,20 L 15,5 Z" 
+          fill="#34D399" 
+          opacity="0.6"/>
+  </g>
+  
+  <!-- Gear Icon (Right) -->
+  <g transform="translate(130, 62)">
+    <path d="M 0,-12 L 2,-10 L 2,-8 Q 8,-10 12,0 L 10,2 L 8,2 Q 10,8 0,12 L -2,10 L -2,8 Q -8,10 -12,0 L -10,-2 L -8,-2 Q -10,-8 0,-12 Z" 
+          fill="none" 
+          stroke="#3B82F6" 
+          stroke-width="2.5"/>
+    <circle cx="0" cy="0" r="5" fill="#3B82F6"/>
+    <circle cx="0" cy="0" r="3" fill="#E2E8F0"/>
+  </g>
+  
+  <!-- AG Monogram -->
+  <text x="100" y="115" 
+        font-family="Arial, sans-serif" 
+        font-size="40" 
+        font-weight="bold" 
+        fill="url(#textGradientLight)" 
+        text-anchor="middle">AG</text>
+  
+  <!-- AutoGuard Text -->
+  <text x="100" y="145" 
+        font-family="Arial, sans-serif" 
+        font-size="16" 
+        font-weight="600" 
+        fill="#3B82F6" 
+        text-anchor="middle">AutoGuard</text>
+  
+  <!-- Tagline -->
+  <text x="100" y="160" 
+        font-family="Arial, sans-serif" 
+        font-size="8" 
+        fill="#64748B" 
+        text-anchor="middle">Infrastructure Guardian</text>
+</svg>

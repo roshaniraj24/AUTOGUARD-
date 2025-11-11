@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevOps Monitoring Dashboard - Live Connected</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/socket.io-client@4/dist/socket.io.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Glass morphism effect */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .metric-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1e3c72, #2a5298, #1e3c72);
+            min-height: 100vh;
+            color: white;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        
+        .animate-pulse-slow {
+            animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        .gradient-text {
+            background: linear-gradient(45deg, #3b82f6, #8b5cf6, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .status-online { color: #10b981; }
+        .status-warning { color: #f59e0b; }
+        .status-error { color: #ef4444; }
+        
+        .connection-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .notification {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 1001;
+            max-width: 350px;
+        }
+    </style>
+</head>
+<body class="bg-gray-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const { createRoot } = ReactDOM;
+
+        // WebSocket Hook for Live Connection
+        function useWebSocket() {
+            const [socket, setSocket] = useState(null);
+            const [isConnected, setIsConnected] = useState(false);
+            const [metrics, setMetrics] = useState({
+                totalServers: 12,
+                onlineServers: 11,
+                cpuUsage: 67,
+                memoryUsage: 82,
+                diskUsage: 45,
+                networkTraffic: 1.2,
+                uptime: 99.8,
+                responseTime: 145,
+                throughput: 2340,
+                activeConnections: 1247,
+                securityThreats: 3,
+                lastBackup: '2h ago',
+                apiCalls: 15420,
+                errors: 12,
+                warnings: 7
+            });
+            const [alerts, setAlerts] = useState([]);
+            const [lastUpdate, setLastUpdate] = useState(new Date());
+
+            useEffect(() => {
+                console.log('🔌 Connecting to WebSocket server...');
+                const newSocket = io('http://localhost:5000');
+                setSocket(newSocket);
+
+                newSocket.on('connect', () => {
+                    console.log('✅ Connected to monitoring system');
+                    setIsConnected(true);
+                    setLastUpdate(new Date());
+                });
+
+                newSocket.on('disconnect', () => {
+                    console.log('❌ Disconnected from monitoring system');
+                    setIsConnected(false);
+                });
+
+                newSocket.on('connect_error', (error) => {
+                    console.error('❌ Connection error:', error);
+                    setIsConnected(false);
+                });
+
+                newSocket.on('metrics_update', (data) => {
+                    console.log('📊 Metrics updated:', data);
+                    setMetrics(prevMetrics => ({
+                        ...prevMetrics,
+                        ...data
+                    }));
+                    setLastUpdate(new Date());
+                });
+
+                newSocket.on('new_alert', (alert) => {
+                    console.log('🚨 New alert:', alert);
+                    setAlerts(prev => [alert, ...prev.slice(0, 49)]);
+                });
+
+                newSocket.on('alert_resolved', (alertId) => {
+                    console.log('✅ Alert resolved:', alertId);
+                    setAlerts(prev => prev.map(alert => 
+                        alert.id === alertId ? { ...alert, status: 'resolved' } : alert
+                    ));
+                });
+
+                newSocket.on('connection_response', (data) => {
+                    console.log('🔗 Connection response:', data);
+                });
+
+                return () => {
+                    console.log('🔌 Cleaning up WebSocket connection');
+                    newSocket.close();
+                };
+            }, []);
+
+            return { socket, isConnected, metrics, alerts, setAlerts, lastUpdate };
+        }
+
+        // Enhanced Dashboard Component with Live Data
+        function Dashboard() {
+            const { socket, isConnected, metrics, alerts, setAlerts, lastUpdate } = useWebSocket();
+            const [autoRefresh, setAutoRefresh] = useState(true);
+            const [refreshInterval, setRefreshInterval] = useState(5);
+            const [isRefreshing, setIsRefreshing] = useState(false);
+            const [notifications, setNotifications] = useState([]);
+
+            // Manual refresh function
+            const handleManualRefresh = async () => {
+                if (!socket || !isConnected) return;
+                
+                setIsRefreshing(true);
+                console.log('🔄 Requesting metrics update...');
+                socket.emit('request_metrics');
+                
+                // Fetch additional data from API
+                try {
+                    const [alertsRes, serversRes] = await Promise.all([
+                        fetch('http://localhost:5000/api/alerts'),
+                        fetch('http://localhost:5000/api/servers')
+                    ]);
+                    
+                    if (alertsRes.ok) {
+                        const alertsData = await alertsRes.json();
+                        setAlerts(alertsData);
+                    }
+                } catch (error) {
+                    console.error('❌ Error fetching data:', error);
+                }
+                
+                setTimeout(() => setIsRefreshing(false), 1000);
+            };
+
+            // Show notification
+            const showNotification = (message, type = 'info') => {
+                const notification = {
+                    id: Date.now(),
+                    message,
+                    type,
+                    timestamp: new Date()
+                };
+                setNotifications(prev => [notification, ...prev.slice(0, 4)]);
+                
+                // Auto remove after 5 seconds
+                setTimeout(() => {
+                    setNotifications(prev => prev.filter(n => n.id !== notification.id));
+                }, 5000);
+            };
+
+            // React to connection changes
+            useEffect(() => {
+                if (isConnected) {
+                    showNotification('🟢 Connected to monitoring system', 'success');
+                } else {
+                    showNotification('🔴 Disconnected from monitoring system', 'error');
+                }
+            }, [isConnected]);
+
+            // React to new alerts
+            useEffect(() => {
+                if (alerts.length > 0) {
+                    const latestAlert = alerts[0];
+                    if (latestAlert && latestAlert.status === 'active') {
+                        showNotification(`🚨 ${latestAlert.message}`, latestAlert.type);
+                    }
+                }
+            }, [alerts]);
+
+            const MetricCard = ({ title, value, icon, color, trend, subtitle }) => {
+                const getColorClass = (color) => {
+                    const colors = {
+                        blue: 'border-blue-500/50 bg-blue-500/10 text-blue-400',
+                        green: 'border-green-500/50 bg-green-500/10 text-green-400',
+                        red: 'border-red-500/50 bg-red-500/10 text-red-400',
+                        yellow: 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400',
+                        purple: 'border-purple-500/50 bg-purple-500/10 text-purple-400',
+                        cyan: 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400',
+                        orange: 'border-orange-500/50 bg-orange-500/10 text-orange-400'
+                    };
+                    return colors[color] || colors.blue;
+                };
+
+                return (
+                    <div className={`metric-card border-l-4 ${getColorClass(color)} hover:scale-105 transition-all duration-300`}>
+                        <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className={`text-2xl ${getColorClass(color).split(' ')[2]}`}>{icon}</span>
+                                    {trend !== undefined && (
+                                        <div className={`flex items-center space-x-1 text-sm ${
+                                            trend > 0 ? 'text-green-400' : trend < 0 ? 'text-red-400' : 'text-gray-400'
+                                        }`}>
+                                            <span>{trend > 0 ? '↗' : trend < 0 ? '↘' : '→'}</span>
+                                            <span>{Math.abs(trend)}%</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <h3 className="text-sm font-medium text-gray-300 mb-1">{title}</h3>
+                                <p className="text-2xl font-bold text-white mb-1">{value}</p>
+                                {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const AlertCard = ({ alert, onResolve }) => {
+                const getAlertClass = (type) => {
+                    return type === 'error' ? 'border-red-500/50 bg-red-500/10 text-red-400' :
+                           type === 'warning' ? 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400' :
+                           'border-blue-500/50 bg-blue-500/10 text-blue-400';
+                };
+
+                const getAlertIcon = (type) => {
+                    return type === 'error' ? '🚨' : type === 'warning' ? '⚠️' : 'ℹ️';
+                };
+
+                const handleResolve = () => {
+                    if (socket && onResolve) {
+                        socket.emit('resolve_alert', { alert_id: alert.id });
+                        onResolve(alert.id);
+                    }
+                };
+
+                return (
+                    <div className={`glass-card p-4 border-l-4 ${getAlertClass(alert.type)} ${alert.status === 'resolved' ? 'opacity-60' : ''}`}>
+                        <div className="flex items-start justify-between">
+                            <div className="flex items-start space-x-3 flex-1">
+                                <span className="text-lg">{getAlertIcon(alert.type)}</span>
+                                <div className="flex-1">
+                                    <div className="flex items-center space-x-2 mb-1">
+                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                            alert.status === 'resolved' ? 'bg-green-500/20 text-green-400' :
+                                            alert.type === 'error' ? 'bg-red-500/20 text-red-400' :
+                                            alert.type === 'warning' ? 'bg-yellow-500/20 text-yellow-400' :
+                                            'bg-blue-500/20 text-blue-400'
+                                        }`}>
+                                            {alert.severity || alert.type}
+                                        </span>
+                                        {alert.source && <span className="text-xs text-gray-400">{alert.source}</span>}
+                                    </div>
+                                    <p className="text-sm font-medium text-white">{alert.message}</p>
+                                    <div className="flex items-center space-x-2 mt-2 text-xs text-gray-400">
+                                        <span>🕒</span>
+                                        <span>{new Date(alert.timestamp).toLocaleTimeString()}</span>
+                                        {alert.status === 'resolved' && (
+                                            <span className="text-green-400">• Resolved</span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                            {alert.status !== 'resolved' && (
+                                <button
+                                    onClick={handleResolve}
+                                    className="ml-2 px-2 py-1 text-xs bg-green-500/20 text-green-400 rounded hover:bg-green-500/30 transition-colors"
+                                >
+                                    Resolve
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                );
+            };
+
+            const Notification = ({ notification, onClose }) => {
+                const getNotificationClass = (type) => {
+                    return type === 'error' ? 'border-red-500/50 bg-red-500/10 text-red-400' :
+                           type === 'success' ? 'border-green-500/50 bg-green-500/10 text-green-400' :
+                           type === 'warning' ? 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400' :
+                           'border-blue-500/50 bg-blue-500/10 text-blue-400';
+                };
+
+                return (
+                    <div className={`glass-card p-3 border-l-4 ${getNotificationClass(notification.type)} mb-2 transition-all duration-300`}>
+                        <div className="flex items-start justify-between">
+                            <p className="text-sm text-white flex-1">{notification.message}</p>
+                            <button 
+                                onClick={() => onClose(notification.id)}
+                                className="ml-2 text-gray-400 hover:text-white transition-colors"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen p-6 space-y-6">
+                    {/* Live Connection Indicator */}
+                    <div className="connection-indicator">
+                        <div className="glass-card px-4 py-2 flex items-center space-x-2">
+                            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
+                            <span className="text-sm text-white">
+                                {isConnected ? '🟢 Live Connected' : '🔴 Disconnected'}
+                            </span>
+                            {isRefreshing && <span className="text-xs text-blue-400 animate-pulse">↻ Updating...</span>}
+                        </div>
+                    </div>
+
+                    {/* Notifications */}
+                    <div className="notification">
+                        {notifications.map(notification => (
+                            <Notification 
+                                key={notification.id} 
+                                notification={notification} 
+                                onClose={(id) => setNotifications(prev => prev.filter(n => n.id !== id))}
+                            />
+                        ))}
+                    </div>
+
+                    {/* Header */}
+                    <div className="glass-card p-6">
+                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                            <div>
+                                <h1 className="text-3xl font-bold gradient-text mb-2">
+                                    🚀 DevOps Monitoring Dashboard
+                                </h1>
+                                <p className="text-gray-400">
+                                    Last updated: {lastUpdate.toLocaleTimeString()} 
+                                    <span className={`ml-2 inline-flex items-center ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
+                                        <div className={`w-2 h-2 rounded-full mr-1 ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
+                                        {isConnected ? 'Live Data' : 'Disconnected'}
+                                    </span>
+                                </p>
+                            </div>
+                            
+                            <div className="flex flex-wrap items-center gap-3">
+                                <button
+                                    onClick={handleManualRefresh}
+                                    disabled={!isConnected || isRefreshing}
+                                    className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 border border-blue-500/50 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-all disabled:opacity-50"
+                                >
+                                    {isRefreshing ? '↻' : '🔄'} Refresh
+                                </button>
+                                
+                                <div className={`px-3 py-2 rounded-lg border text-sm ${
+                                    isConnected 
+                                        ? 'bg-green-500/20 border-green-500/50 text-green-400' 
+                                        : 'bg-red-500/20 border-red-500/50 text-red-400'
+                                }`}>
+                                    {isConnected ? 'WebSocket Connected' : 'WebSocket Disconnected'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Main Metrics */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        <MetricCard
+                            title="Total Servers"
+                            value={metrics.totalServers}
+                            icon="🖥️"
+                            color="blue"
+                            trend={2}
+                            subtitle={`${metrics.onlineServers} online`}
+                        />
+                        <MetricCard
+                            title="CPU Usage"
+                            value={`${Math.round(metrics.cpuUsage)}%`}
+                            icon="⚡"
+                            color={metrics.cpuUsage > 80 ? "red" : metrics.cpuUsage > 60 ? "yellow" : "green"}
+                            trend={-5}
+                            subtitle="Real system CPU"
+                        />
+                        <MetricCard
+                            title="Memory Usage"
+                            value={`${Math.round(metrics.memoryUsage)}%`}
+                            icon="🧠"
+                            color={metrics.memoryUsage > 85 ? "red" : metrics.memoryUsage > 70 ? "yellow" : "green"}
+                            trend={8}
+                            subtitle="Real system memory"
+                        />
+                        <MetricCard
+                            title="Active Users"
+                            value={metrics.activeConnections?.toLocaleString()}
+                            icon="👥"
+                            color="purple"
+                            trend={15}
+                            subtitle="Current sessions"
+                        />
+                        <MetricCard
+                            title="System Uptime"
+                            value={`${metrics.uptime}%`}
+                            icon="✅"
+                            color="green"
+                            trend={0.2}
+                            subtitle="Last 30 days"
+                        />
+                    </div>
+
+                    {/* Network & Performance Metrics */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <MetricCard
+                            title="Network Traffic"
+                            value={`${metrics.networkTraffic?.toFixed(1)} GB/s`}
+                            icon="🌐"
+                            color="cyan"
+                            trend={12}
+                            subtitle="Live network data"
+                        />
+                        <MetricCard
+                            title="API Calls"
+                            value={metrics.apiCalls?.toLocaleString()}
+                            icon="🔗"
+                            color="orange"
+                            trend={25}
+                            subtitle="Auto-incrementing"
+                        />
+                        <MetricCard
+                            title="Response Time"
+                            value={`${Math.round(metrics.responseTime)}ms`}
+                            icon="⏱️"
+                            color={metrics.responseTime > 200 ? "red" : metrics.responseTime > 150 ? "yellow" : "green"}
+                            trend={-12}
+                            subtitle="Live response time"
+                        />
+                        <MetricCard
+                            title="Error Rate"
+                            value={`${metrics.errors}/hr`}
+                            icon="⚠️"
+                            color={metrics.errors > 10 ? "red" : "yellow"}
+                            trend={-15}
+                            subtitle="Auto-updating"
+                        />
+                    </div>
+
+                    {/* Live Alerts Section */}
+                    <div className="glass-card p-6">
+                        <h3 className="text-lg font-semibold mb-4 flex items-center justify-between">
+                            <span className="flex items-center">
+                                <span className="mr-2">🔔</span>
+                                Live System Alerts ({alerts.length})
+                            </span>
+                            {isConnected && (
+                                <span className="text-xs text-green-400 flex items-center">
+                                    <div className="w-2 h-2 bg-green-400 rounded-full mr-1 animate-pulse"></div>
+                                    Auto-updating
+                                </span>
+                            )}
+                        </h3>
+                        <div className="space-y-3 max-h-96 overflow-y-auto">
+                            {alerts.length > 0 ? (
+                                alerts.slice(0, 10).map((alert, index) => (
+                                    <AlertCard 
+                                        key={alert.id || index} 
+                                        alert={alert} 
+                                        onResolve={(id) => {
+                                            setAlerts(prev => prev.map(a => 
+                                                a.id === id ? { ...a, status: 'resolved' } : a
+                                            ));
+                                        }}
+                                    />
+                                ))
+                            ) : (
+                                <div className="text-center py-8 text-gray-400">
+                                    <span className="text-4xl mb-2 block">✅</span>
+                                    <p>No active alerts</p>
+                                    <p className="text-sm">All systems operational</p>
+                                    {isConnected && <p className="text-xs text-green-400 mt-2">Monitoring for new alerts...</p>}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="text-center text-gray-400 text-sm">
+                        <p>🚀 DevOps Monitoring Platform - Live Dashboard with WebSocket Connection</p>
+                        <p>
+                            {isConnected ? (
+                                <>Real-time monitoring • Auto-refresh via WebSocket • Live data from Flask backend</>
+                            ) : (
+                                <>⚠️ Disconnected - Please ensure backend server is running on port 5000</>
+                            )}
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+
+        // Render the application
+        const root = createRoot(document.getElementById('root'));
+        root.render(<Dashboard />);
+    </script>
+</body>
+</html>

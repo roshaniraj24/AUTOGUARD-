@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ app_name | title }} - {{ inventory_hostname }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .server-info {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 30px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            background: #4CAF50;
+            color: white;
+            font-weight: bold;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .metric {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ app_name | title }}</h1>
+        <div class="server-info">
+            <h2>Server: {{ inventory_hostname }}</h2>
+            <div class="status">ONLINE</div>
+            <p>Deployed at: {{ ansible_date_time.iso8601 }}</p>
+            <p>Version: {{ app_version | default('latest') }}</p>
+        </div>
+        
+        <div class="metrics">
+            <div class="metric">
+                <h3>Uptime</h3>
+                <p id="uptime">Calculating...</p>
+            </div>
+            <div class="metric">
+                <h3>Requests Served</h3>
+                <p id="requests">0</p>
+            </div>
+            <div class="metric">
+                <h3>Response Time</h3>
+                <p id="response-time">< 100ms</p>
+            </div>
+        </div>
+        
+        <div class="server-info">
+            <h3>Available Endpoints</h3>
+            <ul style="list-style: none; padding: 0;">
+                <li><a href="/health" style="color: #4CAF50;">/health</a> - Health check</li>
+                <li><a href="/api" style="color: #4CAF50;">/api</a> - API endpoints</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        // Simple JavaScript to make the page dynamic
+        let startTime = Date.now();
+        let requestCount = Math.floor(Math.random() * 1000);
+        
+        function updateMetrics() {
+            const uptime = Math.floor((Date.now() - startTime) / 1000);
+            const hours = Math.floor(uptime / 3600);
+            const minutes = Math.floor((uptime % 3600) / 60);
+            const seconds = uptime % 60;
+            
+            document.getElementById('uptime').textContent = 
+                `${hours}h ${minutes}m ${seconds}s`;
+            
+            requestCount += Math.floor(Math.random() * 3);
+            document.getElementById('requests').textContent = requestCount;
+            
+            const responseTime = Math.floor(Math.random() * 50) + 50;
+            document.getElementById('response-time').textContent = `${responseTime}ms`;
+        }
+        
+        setInterval(updateMetrics, 1000);
+        updateMetrics();
+    </script>
+</body>
+</html>
