@@ -1,0 +1,52 @@
+name: AutoGuard CI/CD - Simple
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Build Frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+        continue-on-error: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Check Backend
+        run: |
+          cd backend
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -c "import flask; print('Flask installed successfully')"
+        continue-on-error: false
+
+      - name: Verify Ansible Playbooks
+        run: |
+          pip install ansible
+          cd ansible
+          ansible-playbook --syntax-check *.yml
+        continue-on-error: true
+
+      - name: Success Message
+        run: |
+          echo "✅ AutoGuard build successful!"
+          echo "All components built successfully"

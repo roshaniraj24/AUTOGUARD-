@@ -1,0 +1,10 @@
+run = "docker-compose up"
+language = "bash"
+entrypoint = "README.md"
+
+[nix]
+channel = "stable-22_11"
+
+[deployment]
+run = ["sh", "-c", "docker-compose up -d"]
+deploymentTarget = "cloudrun"

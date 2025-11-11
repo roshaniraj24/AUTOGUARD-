@@ -1,0 +1,43 @@
+# 🚫 Files to ignore for Replit deployment
+
+# Node modules
+node_modules/
+frontend/node_modules/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+
+# Docker volumes (data will be recreated)
+postgres_data/
+redis_data/
+grafana_data/
+prometheus_data/
+nagios_var/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+frontend/build/
+frontend/dist/
+
+# Environment files (will be set in Replit secrets)
+.env
+.env.local
